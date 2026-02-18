@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "auton-inbox": {
+      "command": "npx",
+      "args": ["tsx", "mcp/server.ts"],
+      "env": {
+        "SUPABASE_URL": "https://your-project.supabase.co",
+        "SUPABASE_ANON_KEY": "your-anon-key",
+        "BASE_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
