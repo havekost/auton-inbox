@@ -1,6 +1,8 @@
 export interface Inbox {
   id: string;
-  name: string | null;
+  name: string;
+  public_key: string;
+  private_secret: string;
   created_at: string;
 }
 

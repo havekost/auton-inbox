@@ -9,15 +9,31 @@ export async function POST(
 ) {
   const { id } = await params;
 
-  // Verify inbox exists
+  // Require public_key via x-inbox-key header or ?key= query param
+  const publicKey =
+    request.headers.get("x-inbox-key") ||
+    request.nextUrl.searchParams.get("key");
+
+  if (!publicKey) {
+    return NextResponse.json(
+      { error: "Missing public key. Provide x-inbox-key header or ?key= query parameter." },
+      { status: 401 }
+    );
+  }
+
+  // Verify inbox exists and public_key matches
   const { data: inbox } = await supabase
     .from("inboxes")
     .select("id")
     .eq("id", id)
+    .eq("public_key", publicKey)
     .single();
 
   if (!inbox) {
-    return NextResponse.json({ error: "Inbox not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Inbox not found or invalid public key" },
+      { status: 404 }
+    );
   }
 
   // Parse body — accept JSON or raw text
@@ -66,21 +82,33 @@ export async function POST(
   return NextResponse.json({ ok: true });
 }
 
-// Also support GET for simple pings/health checks
+// GET returns inbox info — requires private_secret via ?secret= query param
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const secret = request.nextUrl.searchParams.get("secret");
+
+  if (!secret) {
+    return NextResponse.json(
+      { error: "Missing private secret. Provide ?secret= query parameter." },
+      { status: 401 }
+    );
+  }
 
   const { data: inbox } = await supabase
     .from("inboxes")
-    .select("id, name, created_at")
+    .select("id, name, public_key, created_at")
     .eq("id", id)
+    .eq("private_secret", secret)
     .single();
 
   if (!inbox) {
-    return NextResponse.json({ error: "Inbox not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Inbox not found or invalid secret" },
+      { status: 404 }
+    );
   }
 
   const { count } = await supabase

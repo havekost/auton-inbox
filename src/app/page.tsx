@@ -3,19 +3,29 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { v4 as uuidv4 } from "uuid";
+import { v4 as uuidv4, v7 as uuidv7 } from "uuid";
 
 export default function Home() {
   const router = useRouter();
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [credentials, setCredentials] = useState<{
+    id: string;
+    name: string;
+    publicKey: string;
+    privateSecret: string;
+  } | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
 
   async function createInbox() {
     setLoading(true);
     const id = uuidv4();
+    const name = uuidv7();
+    const publicKey = uuidv4();
+    const privateSecret = uuidv4();
+
     const { error } = await supabase
       .from("inboxes")
-      .insert({ id, name: name.trim() || null });
+      .insert({ id, name, public_key: publicKey, private_secret: privateSecret });
 
     if (error) {
       alert("Failed to create inbox: " + error.message);
@@ -23,7 +33,85 @@ export default function Home() {
       return;
     }
 
-    router.push(`/inbox/${id}`);
+    setCredentials({ id, name, publicKey, privateSecret });
+    setLoading(false);
+  }
+
+  function copyText(text: string, label: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(label);
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  function goToInbox() {
+    if (!credentials) return;
+    router.push(`/inbox/${credentials.id}?secret=${credentials.privateSecret}`);
+  }
+
+  if (credentials) {
+    const endpointUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/api/inbox/${credentials.id}`
+        : "";
+
+    return (
+      <div className="space-y-8">
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold">Inbox Created</h1>
+          <p className="text-[var(--muted)] text-sm">
+            Save these credentials — the private secret cannot be recovered.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <CredentialRow
+            label="Inbox Name"
+            value={credentials.name}
+            onCopy={() => copyText(credentials.name, "name")}
+            copied={copied === "name"}
+          />
+          <CredentialRow
+            label="Endpoint URL"
+            value={endpointUrl}
+            onCopy={() => copyText(endpointUrl, "endpoint")}
+            copied={copied === "endpoint"}
+          />
+          <CredentialRow
+            label="Public Key"
+            sublabel="Give this to services that send webhooks. They pass it via x-inbox-key header or ?key= query param."
+            value={credentials.publicKey}
+            onCopy={() => copyText(credentials.publicKey, "public")}
+            copied={copied === "public"}
+          />
+          <CredentialRow
+            label="Private Secret"
+            sublabel="This is your password to access the inbox. Keep it safe."
+            value={credentials.privateSecret}
+            onCopy={() => copyText(credentials.privateSecret, "secret")}
+            copied={copied === "secret"}
+          />
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4 space-y-2">
+            <p className="text-xs text-[var(--muted)]">Example curl</p>
+            <pre className="text-xs break-all whitespace-pre-wrap text-[var(--accent)]">
+{`curl -X POST ${endpointUrl} \\
+  -H "Content-Type: application/json" \\
+  -H "x-inbox-key: ${credentials.publicKey}" \\
+  -d '{"hello": "world"}'`}
+            </pre>
+          </div>
+
+          <button
+            onClick={goToInbox}
+            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+          >
+            Open Inbox Monitor
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -36,45 +124,60 @@ export default function Home() {
         </p>
       </div>
 
-      <div className="space-y-4">
-        <div>
-          <label
-            htmlFor="name"
-            className="block text-sm text-[var(--muted)] mb-1"
-          >
-            Inbox name (optional)
-          </label>
-          <input
-            id="name"
-            type="text"
-            placeholder="e.g. github-notifications"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-
-        <button
-          onClick={createInbox}
-          disabled={loading}
-          className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-        >
-          {loading ? "Creating..." : "Create Inbox"}
-        </button>
-      </div>
+      <button
+        onClick={createInbox}
+        disabled={loading}
+        className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+      >
+        {loading ? "Creating..." : "Create Inbox"}
+      </button>
 
       <div className="border-t border-[var(--border)] pt-6 space-y-2">
         <h2 className="text-sm font-semibold">How it works</h2>
         <ol className="text-sm text-[var(--muted)] space-y-1 list-decimal list-inside">
-          <li>Create an inbox to get a unique endpoint URL</li>
+          <li>Click create to get an inbox with a public key and private secret</li>
           <li>
-            Give the URL to any service that sends webhooks (or use the MCP
-            server)
+            Give the endpoint URL + public key to services that send webhooks
           </li>
           <li>
-            Watch incoming payloads appear in real-time on the monitor page
+            Use your private secret to log in and watch payloads arrive in
+            real-time
           </li>
         </ol>
+      </div>
+    </div>
+  );
+}
+
+function CredentialRow({
+  label,
+  sublabel,
+  value,
+  onCopy,
+  copied,
+}: {
+  label: string;
+  sublabel?: string;
+  value: string;
+  onCopy: () => void;
+  copied: boolean;
+}) {
+  return (
+    <div className="rounded border border-[var(--border)] bg-[var(--surface)] p-3 space-y-1">
+      <p className="text-xs text-[var(--muted)]">{label}</p>
+      {sublabel && (
+        <p className="text-xs text-[var(--muted)] opacity-70">{sublabel}</p>
+      )}
+      <div className="flex items-center gap-2">
+        <code className="flex-1 text-sm break-all text-[var(--accent)]">
+          {value}
+        </code>
+        <button
+          onClick={onCopy}
+          className="shrink-0 rounded border border-[var(--border)] px-3 py-1 text-xs hover:bg-[var(--border)]"
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
       </div>
     </div>
   );
