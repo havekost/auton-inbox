@@ -17,9 +17,24 @@ export default function InboxPage({
   const [authenticated, setAuthenticated] = useState(false);
   const [inbox, setInbox] = useState<Inbox | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [filteredMessages, setFilteredMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sendSuccess, setSendSuccess] = useState(false);
+
+  // Filter states
+  const [filterTopic, setFilterTopic] = useState("");
+  const [filterSource, setFilterSource] = useState("");
+  const [filterRef, setFilterRef] = useState("");
+
+  // Send message form states
+  const [sendSource, setSendSource] = useState("");
+  const [sendTopic, setSendTopic] = useState("");
+  const [sendRef, setSendRef] = useState("");
+  const [sendPayload, setSendPayload] = useState("");
 
   const endpointUrl =
     typeof window !== "undefined"
@@ -67,8 +82,101 @@ export default function InboxPage({
       .limit(100);
 
     setMessages(msgs || []);
+    applyFilters(msgs || []);
     setLoading(false);
   }
+
+  function applyFilters(msgs: Message[]) {
+    let filtered = msgs;
+
+    if (filterTopic) {
+      filtered = filtered.filter((msg) => {
+        const body = msg.body as { topic?: string };
+        return body.topic?.includes(filterTopic);
+      });
+    }
+
+    if (filterSource) {
+      filtered = filtered.filter((msg) => {
+        const body = msg.body as { source?: string };
+        return body.source?.includes(filterSource);
+      });
+    }
+
+    if (filterRef) {
+      filtered = filtered.filter((msg) => {
+        const body = msg.body as { ref?: string };
+        return body.ref?.includes(filterRef);
+      });
+    }
+
+    setFilteredMessages(filtered);
+  }
+
+  async function sendMessage() {
+    if (!sendSource.trim() || !sendTopic.trim()) {
+      setSendError("Source and topic are required");
+      return;
+    }
+
+    setSendingMessage(true);
+    setSendError(null);
+    setSendSuccess(false);
+
+    try {
+      const body: Record<string, unknown> = {
+        source: sendSource,
+        topic: sendTopic,
+      };
+
+      if (sendRef.trim()) {
+        body.ref = sendRef;
+      }
+
+      if (sendPayload.trim()) {
+        try {
+          body.payload = JSON.parse(sendPayload);
+        } catch {
+          setSendError("Invalid JSON in payload");
+          setSendingMessage(false);
+          return;
+        }
+      }
+
+      const response = await fetch(`/api/inbox/${id}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-inbox-key": inbox?.public_key || "",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        setSendError(data.error || "Failed to send message");
+        setSendingMessage(false);
+        return;
+      }
+
+      setSendSuccess(true);
+      setSendSource("");
+      setSendTopic("");
+      setSendRef("");
+      setSendPayload("");
+
+      setTimeout(() => setSendSuccess(false), 3000);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setSendingMessage(false);
+    }
+  }
+
+  // Apply filters when filter values change
+  useEffect(() => {
+    applyFilters(messages);
+  }, [filterTopic, filterSource, filterRef, messages]);
 
   // Subscribe to realtime messages once authenticated
   useEffect(() => {
@@ -182,19 +290,108 @@ export default function InboxPage({
         </p>
       </div>
 
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold">
-          Messages ({messages.length})
-        </h2>
+      <div className="rounded border border-[var(--border)] bg-[var(--surface)] p-4 space-y-3">
+        <h2 className="text-sm font-semibold">Send a Message</h2>
+        <div className="space-y-2">
+          <input
+            type="text"
+            placeholder="Source (e.g., github, slack/agent-bob)"
+            value={sendSource}
+            onChange={(e) => setSendSource(e.target.value)}
+            disabled={sendingMessage}
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] disabled:opacity-50"
+          />
+          <input
+            type="text"
+            placeholder="Topic (e.g., message, pr.merged)"
+            value={sendTopic}
+            onChange={(e) => setSendTopic(e.target.value)}
+            disabled={sendingMessage}
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] disabled:opacity-50"
+          />
+          <input
+            type="text"
+            placeholder="Ref/Correlation ID (optional)"
+            value={sendRef}
+            onChange={(e) => setSendRef(e.target.value)}
+            disabled={sendingMessage}
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] disabled:opacity-50"
+          />
+          <textarea
+            placeholder="Payload JSON (optional)"
+            value={sendPayload}
+            onChange={(e) => setSendPayload(e.target.value)}
+            disabled={sendingMessage}
+            rows={3}
+            className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)] disabled:opacity-50 font-mono"
+          />
+          {sendError && <p className="text-sm text-red-400">{sendError}</p>}
+          {sendSuccess && <p className="text-sm text-green-400">Message sent successfully!</p>}
+          <button
+            onClick={sendMessage}
+            disabled={sendingMessage || !sendSource.trim() || !sendTopic.trim()}
+            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {sendingMessage ? "Sending..." : "Send Message"}
+          </button>
+        </div>
+      </div>
 
-        {messages.length === 0 ? (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">
+            Messages ({filteredMessages.length} of {messages.length})
+          </h2>
+          {(filterTopic || filterSource || filterRef) && (
+            <button
+              onClick={() => {
+                setFilterTopic("");
+                setFilterSource("");
+                setFilterRef("");
+              }}
+              className="text-xs text-[var(--accent)] hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        <div className="rounded border border-[var(--border)] bg-[var(--surface)] p-3 space-y-2">
+          <p className="text-xs text-[var(--muted)]">Filter messages:</p>
+          <div className="flex gap-2 flex-wrap">
+            <input
+              type="text"
+              placeholder="Topic"
+              value={filterTopic}
+              onChange={(e) => setFilterTopic(e.target.value)}
+              className="flex-1 min-w-[120px] rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none focus:border-[var(--accent)]"
+            />
+            <input
+              type="text"
+              placeholder="Source"
+              value={filterSource}
+              onChange={(e) => setFilterSource(e.target.value)}
+              className="flex-1 min-w-[120px] rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none focus:border-[var(--accent)]"
+            />
+            <input
+              type="text"
+              placeholder="Ref"
+              value={filterRef}
+              onChange={(e) => setFilterRef(e.target.value)}
+              className="flex-1 min-w-[120px] rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+        </div>
+
+        {filteredMessages.length === 0 ? (
           <div className="rounded border border-dashed border-[var(--border)] p-8 text-center text-sm text-[var(--muted)]">
-            No messages yet. POST to the endpoint URL above to see them appear
-            here.
+            {messages.length === 0
+              ? "No messages yet. POST to the endpoint URL above to see them appear here."
+              : "No messages match the selected filters."}
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg) => {
+            {filteredMessages.map((msg) => {
               const body = msg.body as { source?: string; topic?: string; ref?: string; payload?: unknown };
               return (
                 <div

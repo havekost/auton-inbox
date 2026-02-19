@@ -69,46 +69,19 @@ server.tool(
   }
 );
 
-// Tool: list_inboxes
-server.tool(
-  "list_inboxes",
-  "List all existing inboxes (requires private_secret to view each inbox's messages)",
-  {},
-  async () => {
-    const { data, error } = await supabase
-      .from("inboxes")
-      .select("id, name, public_key, created_at")
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (error) {
-      return { content: [{ type: "text" as const, text: `Error: ${error.message}` }] };
-    }
-
-    const inboxes = (data || []).map((inbox) => ({
-      id: inbox.id,
-      name: inbox.name,
-      public_key: inbox.public_key,
-      endpoint_url: `${baseUrl}/api/inbox/${inbox.id}`,
-      created_at: inbox.created_at,
-    }));
-
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(inboxes, null, 2) }],
-    };
-  }
-);
-
 // Tool: get_messages
 server.tool(
   "get_messages",
-  "Get messages received by an inbox. Requires the inbox's private_secret.",
+  "Get messages received by an inbox. Requires the inbox's private_secret. Supports filtering by topic, source, and ref.",
   {
     inbox_id: z.string().describe("UUID of the inbox"),
     private_secret: z.string().describe("Private secret of the inbox"),
     limit: z.number().optional().default(20).describe("Max messages to return (default 20)"),
+    topic: z.string().optional().describe("Filter by message topic"),
+    source: z.string().optional().describe("Filter by message source"),
+    ref: z.string().optional().describe("Filter by message ref (correlation ID)"),
   },
-  async ({ inbox_id, private_secret, limit }) => {
+  async ({ inbox_id, private_secret, limit, topic, source, ref }) => {
     // Verify private_secret
     const { data: inbox } = await supabase
       .from("inboxes")
@@ -121,10 +94,23 @@ server.tool(
       return { content: [{ type: "text" as const, text: "Error: Inbox not found or invalid private secret." }] };
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("messages")
       .select("*")
-      .eq("inbox_id", inbox_id)
+      .eq("inbox_id", inbox_id);
+
+    // Apply filters if provided
+    if (topic) {
+      query = query.eq("body->>topic", topic);
+    }
+    if (source) {
+      query = query.eq("body->>source", source);
+    }
+    if (ref) {
+      query = query.eq("body->>ref", ref);
+    }
+
+    const { data, error } = await query
       .order("received_at", { ascending: false })
       .limit(limit);
 
