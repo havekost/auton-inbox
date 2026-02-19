@@ -58,7 +58,7 @@ server.tool(
               private_secret: data.private_secret,
               monitor_url: `${baseUrl}/inbox/${data.id}?secret=${data.private_secret}`,
               created_at: data.created_at,
-              usage: `POST to ${endpointUrl} with header "x-inbox-key: ${data.public_key}" or query param "?key=${data.public_key}"`,
+              usage: `POST JSON to ${endpointUrl} with header "x-inbox-key: ${data.public_key}". Body format: { "source": "your-service", "topic": "event.type", "ref": "optional-correlation-id", "payload": { ... } }`,
             },
             null,
             2
@@ -141,13 +141,16 @@ server.tool(
 // Tool: send_message
 server.tool(
   "send_message",
-  "Send a message/webhook payload to an inbox. Requires the inbox's public_key.",
+  "Send a message to an inbox. Requires the inbox's public_key. The message body uses the universal format: source (who sent it), topic (message type for routing), optional ref (correlation/thread ID), and optional payload (structured data).",
   {
     inbox_id: z.string().describe("UUID of the inbox to send to"),
     public_key: z.string().describe("Public key of the inbox"),
-    body: z.record(z.string(), z.unknown()).describe("JSON body to send as the webhook payload"),
+    source: z.string().describe("Origin identifier — service name, agent ID, or path (e.g. \"github\", \"slack/agent-bob\", \"agent-xyz\")"),
+    topic: z.string().describe("Machine-parseable message type for filtering/routing (e.g. \"message\", \"pr.merged\", \"task.complete\")"),
+    ref: z.string().optional().describe("Optional correlation/thread ID for linking related messages"),
+    payload: z.record(z.string(), z.unknown()).optional().describe("Arbitrary structured data — schema varies by source and topic"),
   },
-  async ({ inbox_id, public_key, body }) => {
+  async ({ inbox_id, public_key, source, topic, ref, payload }) => {
     // Verify public_key
     const { data: inbox } = await supabase
       .from("inboxes")
@@ -159,6 +162,10 @@ server.tool(
     if (!inbox) {
       return { content: [{ type: "text" as const, text: "Error: Inbox not found or invalid public key." }] };
     }
+
+    const body: Record<string, unknown> = { source, topic };
+    if (ref !== undefined) body.ref = ref;
+    if (payload !== undefined) body.payload = payload;
 
     const { error } = await supabase.from("messages").insert({
       inbox_id,

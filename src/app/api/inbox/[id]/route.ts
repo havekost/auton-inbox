@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { inboxPostSchema } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -36,21 +37,28 @@ export async function POST(
     );
   }
 
-  // Parse body — accept JSON or raw text
-  let body: unknown;
-  const contentType = request.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body" },
-        { status: 400 }
-      );
-    }
-  } else {
-    const text = await request.text();
-    body = { raw: text };
+  // Parse JSON body
+  let raw: unknown;
+  try {
+    raw = await request.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
+  }
+
+  // Validate against universal post schema
+  const result = inboxPostSchema.safeParse(raw);
+  if (!result.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid message format",
+        expected: { source: "string", topic: "string", ref: "string (optional)", payload: "any (optional)" },
+        details: result.error.issues,
+      },
+      { status: 422 }
+    );
   }
 
   // Extract a subset of useful headers
@@ -68,7 +76,7 @@ export async function POST(
   const { error } = await supabase.from("messages").insert({
     inbox_id: id,
     headers,
-    body,
+    body: result.data,
     method: "POST",
   });
 

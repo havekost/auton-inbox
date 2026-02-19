@@ -99,7 +99,7 @@ export default function Home() {
 {`curl -X POST ${endpointUrl} \\
   -H "Content-Type: application/json" \\
   -H "x-inbox-key: ${credentials.publicKey}" \\
-  -d '{"hello": "world"}'`}
+  -d '{"source":"my-service","topic":"test","payload":{"hello":"world"}}'`}
             </pre>
           </div>
 
