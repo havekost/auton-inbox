@@ -11,6 +11,8 @@ create table if not exists inboxes (
 );
 
 -- Messages table (webhook payloads received)
+-- body jsonb stores the universal post format:
+--   { "source": "origin-id", "topic": "event.type", "ref": "optional-correlation-id", "payload": { ... } }
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   inbox_id uuid references inboxes(id) on delete cascade not null,

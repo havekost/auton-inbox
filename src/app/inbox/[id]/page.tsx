@@ -178,6 +178,7 @@ export default function InboxPage({
         </div>
         <p className="text-xs text-[var(--muted)]">
           POST JSON with <code className="text-[var(--accent)]">x-inbox-key: {inbox.public_key}</code> header.
+          Body: <code className="text-[var(--accent)]">{`{"source":"...","topic":"...","ref?":"...","payload?":{}}`}</code>
         </p>
       </div>
 
@@ -193,24 +194,43 @@ export default function InboxPage({
           </div>
         ) : (
           <div className="space-y-3">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className="rounded border border-[var(--border)] bg-[var(--surface)] p-3 space-y-2"
-              >
-                <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                  <span className="font-medium text-[var(--fg)]">
-                    {msg.method}
-                  </span>
-                  <span>
-                    {new Date(msg.received_at).toLocaleString()}
-                  </span>
+            {messages.map((msg) => {
+              const body = msg.body as { source?: string; topic?: string; ref?: string; payload?: unknown };
+              return (
+                <div
+                  key={msg.id}
+                  className="rounded border border-[var(--border)] bg-[var(--surface)] p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-[var(--fg)]">
+                        {body.source || msg.method}
+                      </span>
+                      {body.topic && (
+                        <span className="rounded bg-[var(--border)] px-1.5 py-0.5 text-[10px]">
+                          {body.topic}
+                        </span>
+                      )}
+                      {body.ref && (
+                        <span className="text-[10px] opacity-60">
+                          ref:{body.ref}
+                        </span>
+                      )}
+                    </div>
+                    <span>
+                      {new Date(msg.received_at).toLocaleString()}
+                    </span>
+                  </div>
+                  {body.payload !== undefined && (
+                    <pre className="overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
+                      {typeof body.payload === "string"
+                        ? body.payload
+                        : JSON.stringify(body.payload, null, 2)}
+                    </pre>
+                  )}
                 </div>
-                <pre className="overflow-x-auto text-xs leading-relaxed whitespace-pre-wrap">
-                  {JSON.stringify(msg.body, null, 2)}
-                </pre>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
