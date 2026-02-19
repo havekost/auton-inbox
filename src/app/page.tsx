@@ -16,6 +16,12 @@ export default function Home() {
   } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
+  // Check Inbox state
+  const [checkInboxId, setCheckInboxId] = useState("");
+  const [checkInboxSecret, setCheckInboxSecret] = useState("");
+  const [checkInboxLoading, setCheckInboxLoading] = useState(false);
+  const [checkInboxError, setCheckInboxError] = useState<string | null>(null);
+
   async function createInbox() {
     setLoading(true);
     const id = uuidv4();
@@ -46,6 +52,32 @@ export default function Home() {
   function goToInbox() {
     if (!credentials) return;
     router.push(`/inbox/${credentials.id}?secret=${credentials.privateSecret}`);
+  }
+
+  async function checkInbox() {
+    if (!checkInboxId.trim() || !checkInboxSecret.trim()) {
+      setCheckInboxError("Please enter both inbox ID and secret key");
+      return;
+    }
+
+    setCheckInboxLoading(true);
+    setCheckInboxError(null);
+
+    const { data } = await supabase
+      .from("inboxes")
+      .select("*")
+      .eq("id", checkInboxId.trim())
+      .eq("private_secret", checkInboxSecret.trim())
+      .single();
+
+    if (!data) {
+      setCheckInboxError("Invalid inbox ID or secret key");
+      setCheckInboxLoading(false);
+      return;
+    }
+
+    setCheckInboxLoading(false);
+    router.push(`/inbox/${checkInboxId}?secret=${checkInboxSecret}`);
   }
 
   if (credentials) {
@@ -117,20 +149,64 @@ export default function Home() {
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Create an Inbox</h1>
+        <h1 className="text-2xl font-bold">Inbox Manager</h1>
         <p className="text-[var(--muted)] text-sm">
-          Create a webhook endpoint that autonomous AI agents can use to receive
-          data from external services.
+          Create a webhook endpoint or access an existing inbox.
         </p>
       </div>
 
-      <button
-        onClick={createInbox}
-        disabled={loading}
-        className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
-      >
-        {loading ? "Creating..." : "Create Inbox"}
-      </button>
+      <div className="grid gap-8 md:grid-cols-2">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">Create an Inbox</h2>
+            <p className="text-sm text-[var(--muted)]">
+              Generate a new webhook endpoint for autonomous AI agents to receive data from external services.
+            </p>
+          </div>
+          <button
+            onClick={createInbox}
+            disabled={loading}
+            className="rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Creating..." : "Create Inbox"}
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">Check Inbox</h2>
+            <p className="text-sm text-[var(--muted)]">
+              Access an existing inbox with your inbox ID and secret key.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <input
+              type="text"
+              placeholder="Inbox ID"
+              value={checkInboxId}
+              onChange={(e) => setCheckInboxId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && checkInbox()}
+              className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+            />
+            <input
+              type="password"
+              placeholder="Secret Key"
+              value={checkInboxSecret}
+              onChange={(e) => setCheckInboxSecret(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && checkInbox()}
+              className="w-full rounded border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+            />
+            {checkInboxError && <p className="text-sm text-red-400">{checkInboxError}</p>}
+            <button
+              onClick={checkInbox}
+              disabled={checkInboxLoading || !checkInboxId.trim() || !checkInboxSecret.trim()}
+              className="w-full rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {checkInboxLoading ? "Checking..." : "Access Inbox"}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="border-t border-[var(--border)] pt-6 space-y-2">
         <h2 className="text-sm font-semibold">How it works</h2>
