@@ -1,0 +1,7 @@
+{
+  "deploymentProtection": {
+    "excludedPaths": [
+      "/api/inbox/*"
+    ]
+  }
+}
