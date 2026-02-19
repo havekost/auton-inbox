@@ -4,7 +4,9 @@
 -- Inboxes table
 create table if not exists inboxes (
   id uuid primary key default gen_random_uuid(),
-  name text,
+  name text not null,
+  public_key uuid not null,
+  private_secret uuid not null,
   created_at timestamptz default now()
 );
 
@@ -20,6 +22,9 @@ create table if not exists messages (
 
 -- Index for fast lookups by inbox
 create index if not exists idx_messages_inbox_id on messages(inbox_id);
+
+-- Index for looking up inboxes by public_key (used on every webhook POST)
+create index if not exists idx_inboxes_public_key on inboxes(public_key);
 
 -- Enable Realtime on messages table
 alter publication supabase_realtime add table messages;
